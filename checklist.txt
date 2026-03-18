@@ -1,0 +1,6 @@
+Item,Status,Observação
+Servidor Linux,[ ],Ubuntu 22.04 LTS é o recomendado pela estabilidade.
+Docker Engine,[ ],"O ""motor"" que vai rodar as apps dos usuários."
+Conta no GitHub,[ ],Onde configuraremos os Webhooks de teste.
+API Key (LLM),[ ],Recomendo criar uma conta no Groq Cloud para começar.
+PostgreSQL,[ ],Podemos rodar via Docker para guardar os logs de deploy.

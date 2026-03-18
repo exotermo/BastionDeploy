@@ -1,0 +1,35 @@
+# Binários e Executáveis do Go
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+api/api
+agent/agent
+cli/cli
+
+# Dependências (Vendor/Node)
+node_modules/
+dist/
+build/
+.pnpm-debug.log*
+
+# Variáveis de Ambiente e Segredos (CRÍTICO)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+certbot/
+
+# Logs e Dados de Bancos de Dados
+*.log
+postgres_data/
+db_data/
+
+# IDEs e Sistema Operacional
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
