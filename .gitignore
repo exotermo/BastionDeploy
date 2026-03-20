@@ -33,7 +33,9 @@ certbot/
 #######################################
 
 bin/
-pkg/
+/pkg/
+api/pkg/bin/
+
 
 *.exe
 *.exe~
