@@ -1,35 +1,153 @@
-# Binários e Executáveis do Go
+#######################################
+# 🔐 SEGURANÇA (CRÍTICO)
+#######################################
+
+.env
+.env.*
+!.env.example
+
+.env.local
+.env.*.local
+
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.csr
+
+id_rsa
+id_rsa.pub
+authorized_keys
+
+secrets.*
+secret.*
+credentials.*
+config.local.*
+config.*.local
+
+certbot/
+
+#######################################
+# ⚙️ GO (BINÁRIOS E BUILD)
+#######################################
+
 bin/
+pkg/
+
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
+*.out
+*.test
+
+# seus binários específicos
 api/api
 agent/agent
 cli/cli
 
-# Dependências (Vendor/Node)
+#######################################
+# 🧠 PYTHON
+#######################################
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+.venv/
+venv/
+env/
+
+#######################################
+# 🐳 DOCKER / DEVOPS
+#######################################
+
+docker-compose.override.yml
+
+tmp/
+*.pid
+
+# dados persistentes
+postgres_data/
+db_data/
+
+#######################################
+# 📦 FRONT / DEPENDÊNCIAS
+#######################################
+
 node_modules/
 dist/
 build/
 .pnpm-debug.log*
 
-# Variáveis de Ambiente e Segredos (CRÍTICO)
-.env
-.env.local
-.env.*.local
-*.pem
-*.key
-certbot/
+#######################################
+# 🧪 TESTES / COVERAGE
+#######################################
 
-# Logs e Dados de Bancos de Dados
+coverage/
+*.cover
+.coverage
+htmlcov/
+
+#######################################
+# 📊 DATABASE LOCAL
+#######################################
+
+*.db
+*.sqlite
+*.sqlite3
+
+#######################################
+# 📝 LOGS
+#######################################
+
 *.log
-postgres_data/
-db_data/
+logs/
+!logs/.gitkeep
 
-# IDEs e Sistema Operacional
+#######################################
+# 💻 IDE / EDITOR
+#######################################
+
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+
+#######################################
+# 🖥️ SISTEMA OPERACIONAL
+#######################################
+
 .DS_Store
 Thumbs.db
+
+#######################################
+# 📁 BUILD / CACHE
+#######################################
+
+.cache/
+*.cache
+
+#######################################
+# 📁 TEMP / BACKUP
+#######################################
+
+*.tmp
+*.bak
+*.old
+
+#######################################
+# 🔥 EXODEPLOY ESPECÍFICO
+#######################################
+
+deploy/
+releases/
+
+generated/
+runtime/
+
+payloads/
