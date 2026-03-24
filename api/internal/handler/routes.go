@@ -9,9 +9,16 @@ import (
 )
 
 func RegisterRoutes(r *gin.Engine, webhookSecret string, deployRepo domain.DeployRepository, rdb *redis.Client) {
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(200, gin.H{"service": "BastionDeploy API", "version": "1.0.0"})
+	})
+
 	v1 := r.Group("/api/v1")
 	{
 		v1.GET("/health", HealthCheck)
+		v1.GET("/stats", NewStatsHandler(deployRepo))
+		v1.GET("/apps/status", NewAppsStatusHandler(deployRepo))
+		v1.GET("/deploys", NewDeploysHandler(deployRepo))
 
 		deploy := v1.Group("/deploy")
 		{
