@@ -1,47 +1,25 @@
-package handler // define o pacote, como uma classe
-
+package handler
 
 import (
-	"github.com/gin-gonic/gin"
+	"exodeploy/internal/domain"
 	"exodeploy/pkg/middleware"
+
+	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
-// RegisterRoutes agora recebe o secret para passar ao middleware HMAC
-func RegisterRoutes(r *gin.Engine, webhookSecret string) {
-	
-	
-	// Grupo base da API v1
-
-	/*
-	agrupa todas as rotas com o prefixo /api/v1 
-	evitamos boiderplates desnecessarios assim
-	*/
+func RegisterRoutes(r *gin.Engine, webhookSecret string, deployRepo domain.DeployRepository, rdb *redis.Client) {
 	v1 := r.Group("/api/v1")
-
 	{
-		/*
-		define quais funções respondem pra cada URL
-
-		# nota mental pra lembrar como faz para parametrizar comentarios igual no kotlin 
-
-
-		GET /api/v1/health -> chama HealthCheck
-		POST /api/v1/deploy/webhook -> chama WebhookHandler
-		GET /api/v1/deploy/status/meu-bot -> o :app é um parâmetro dinâmico (igual :id no Express.js)
-		*/
-
 		v1.GET("/health", HealthCheck)
 
-		// Rotas de deploy
 		deploy := v1.Group("/deploy")
 		{
-			// O middleware HMAC é aplicado somente aqui  
-			// isso não afeta outras rotas da api 
 			deploy.POST("/webhook",
 				middleware.ValidateGitHubWebhook(webhookSecret),
-				WebhookHandler,
+				NewWebhookHandler(deployRepo, rdb),
 			)
-			deploy.GET("/status/:app", StatusHandler)
+			deploy.GET("/status/:app", NewStatusHandler(deployRepo))
 		}
 	}
 }

@@ -3,6 +3,7 @@
 package config
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -16,6 +17,16 @@ type Config struct {
 	AllowedOrigins []string // quais domínios podem chamar a API
 	TrustedProxies []string // whitelist Cloudflare
 	GitHubWebhookSecret string
+	// Banco de dados
+	DBHost     string
+	DBPort     string
+	DBUser     string
+	DBPassword string
+	DBName     string
+	DBSSLMode  string
+	// Redis
+	RedisAddr     string
+	RedisPassword string
 }
 
 // Load lê as variáveis de ambiente e devolve uma Config preenchida.
@@ -43,6 +54,14 @@ func Load() *Config {
 
 		GitHubWebhookSecret: secret, 
 
+		// Banco de dados -> postgres 15
+		DBHost:     getEnvOrDefault("DB_HOST", "localhost"),
+		DBPort:     getEnvOrDefault("DB_PORT", "5432"),
+		DBUser:     getEnvOrDefault("DB_USER", "exodeploy"),
+		DBPassword: strings.TrimSpace(os.Getenv("DB_PASSWORD")),
+		DBName:     getEnvOrDefault("DB_NAME", "exodeploy"),
+		DBSSLMode:  getEnvOrDefault("DB_SSLMODE", "disable"),
+
 		// IPs do Cloudflare (proxy reverso deles)
 		// Lista completa: https://www.cloudflare.com/ips/
 		TrustedProxies: []string{
@@ -62,6 +81,8 @@ func Load() *Config {
 			"172.64.0.0/13",
 			"131.0.72.0/22",
 		},
+		RedisAddr:     getEnvOrDefault("REDIS_ADDR", "localhost:6379"),
+		RedisPassword: strings.TrimSpace(os.Getenv("REDIS_PASSWORD")),
 	}
 }
 
@@ -84,4 +105,13 @@ func trimOrigins(origins []string) []string {
         result[i] = strings.TrimSpace(o)
     }
     return result
+}
+
+
+// Adiciona esse método na struct Config
+func (c *Config) DatabaseURL() string {
+	return fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		c.DBHost, c.DBPort, c.DBUser, c.DBPassword, c.DBName, c.DBSSLMode,
+	)
 }

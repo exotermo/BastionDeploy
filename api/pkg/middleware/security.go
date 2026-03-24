@@ -1,5 +1,5 @@
 // headers de segurança 
-// necessarios pro Cloudflare)
+// necessarios pro Cloudflare
 
 
 package middleware
