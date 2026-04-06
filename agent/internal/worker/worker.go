@@ -12,6 +12,7 @@ import (
 	_ "github.com/lib/pq"
 
 	"exodeploy/agent/internal/notifier"
+	"exodeploy/agent/internal/provisioner"
 	"exodeploy/agent/internal/runner"
 )
 
@@ -22,19 +23,24 @@ const (
 
 // Job representa o payload que a API publica no Redis
 type Job struct {
-	DeployID    string `json:"deploy_id"`
-	AppName     string `json:"app_name"`
-	Branch      string `json:"branch"`
-	CommitSHA   string `json:"commit_sha"`
-	RepoURL     string `json:"repo_url"`
-	TriggeredBy string `json:"triggered_by"`
+	DeployID      string `json:"deploy_id"`
+	AppName       string `json:"app_name"`
+	Branch        string `json:"branch"`
+	CommitSHA     string `json:"commit_sha"`
+	RepoURL       string `json:"repo_url"`
+	TriggeredBy   string `json:"triggered_by"`
+	Domain        string `json:"domain"`
+	EnableSSL     bool   `json:"enable_ssl"`
+	ContainerPort int    `json:"container_port"`
 }
 
 type Worker struct {
-	redis    *redis.Client
-	db       *sql.DB
-	runner   *runner.DockerRunner
-	notifier *notifier.Discord
+	redis         *redis.Client
+	db            *sql.DB
+	runner        *runner.DockerRunner
+	notifier      *notifier.Discord
+	provisioner   *provisioner.NginxProvisioner
+	tunnelMode    bool
 }
 
 func New(cfg *Config) (*Worker, error) {
@@ -60,12 +66,24 @@ func New(cfg *Config) (*Worker, error) {
 	}
 	log.Println("✅ PostgreSQL conectado")
 
-	return &Worker{
-		redis:    rdb,
-		db:       db,
-		runner:   runner.NewDockerRunner(),
-		notifier: notifier.NewDiscord(cfg.DiscordWebhookURL),
-	}, nil
+	w := &Worker{
+		redis:       rdb,
+		db:          db,
+		runner:      runner.NewDockerRunner(),
+		notifier:    notifier.NewDiscord(cfg.DiscordWebhookURL),
+		provisioner: provisioner.NewNginxProvisioner(cfg.CertbotEmail),
+		tunnelMode:  cfg.UseTunnelMode,
+	}
+
+	// Setup Cloudflare Tunnel se habilitado
+	if cfg.UseTunnelMode {
+		cf := provisioner.NewCloudflareProvisioner(cfg.CloudflareTunnelToken)
+		if err := cf.SetupTunnel(); err != nil {
+			log.Printf("⚠️  Cloudflare tunnel falhou: %v (deploy continuará sem tunnel)", err)
+		}
+	}
+
+	return w, nil
 }
 
 func (w *Worker) Close() {
@@ -109,8 +127,12 @@ func (w *Worker) processNext(ctx context.Context) {
 	// Atualiza status para "running"
 	w.updateStatus(job.DeployID, "running")
 
-	// Executa o deploy
-	err = w.runner.Deploy(ctx, job.AppName, job.RepoURL, job.Branch)
+	// Executa o deploy (container)
+	err = w.runner.Deploy(ctx, job.AppName, job.RepoURL, job.Branch, &runner.DeployOptions{
+		Domain:        job.Domain,
+		EnableSSL:     job.EnableSSL,
+		ContainerPort: job.ContainerPort,
+	})
 	if err != nil {
 		log.Printf("❌ Deploy falhou [%s]: %v", job.DeployID, err)
 		w.updateStatus(job.DeployID, "failed")
@@ -119,6 +141,21 @@ func (w *Worker) processNext(ctx context.Context) {
 			job.AppName, job.Branch, job.CommitSHA, err,
 		))
 		return
+	}
+
+	// Provisiona Nginx/Certbot/Tunnel se domínio foi informado
+	if job.Domain != "" {
+		tunnelMode := w.tunnelMode
+		if err := w.provisioner.Provision(provisioner.NginxConfig{
+			AppName:       job.AppName,
+			Domain:        job.Domain,
+			ContainerPort: job.ContainerPort,
+			EnableSSL:     job.EnableSSL,
+			TunnelMode:    tunnelMode,
+		}); err != nil {
+			log.Printf("⚠️  Nginx falhou para %s: %v", job.Domain, err)
+			// Não falha o deploy — container está rodando, SSL/HTTP pode ser retried
+		}
 	}
 
 	log.Printf("✅ Deploy concluído [%s]", job.DeployID)

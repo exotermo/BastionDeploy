@@ -20,6 +20,13 @@ type Config struct {
 
 	// Discord
 	DiscordWebhookURL string
+
+	// Nginx/Certbot
+	CertbotEmail string
+
+	// Cloudflare Tunnel
+	CloudflareTunnelToken string
+	UseTunnelMode        bool
 }
 
 func LoadConfig() *Config {
@@ -33,6 +40,9 @@ func LoadConfig() *Config {
 		DBName:            getEnv("DB_NAME", "exodeploy"),
 		DBSSLMode:         getEnv("DB_SSLMODE", "disable"),
 		DiscordWebhookURL: getEnv("DISCORD_WEBHOOK_URL", ""),
+		CertbotEmail:         getEnv("CERTBOT_EMAIL", ""),
+		CloudflareTunnelToken: getEnv("CLOUDFLARE_TUNNEL_TOKEN", ""),
+		UseTunnelMode:        getEnv("USE_TUNNEL_MODE", "false") == "true",
 	}
 }
 

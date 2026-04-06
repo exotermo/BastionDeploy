@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -15,12 +16,15 @@ const QueueName = "bastiondeploy:jobs"
 
 // Job é o payload publicado no Redis para o agent consumir
 type Job struct {
-	DeployID    string `json:"deploy_id"`
-	AppName     string `json:"app_name"`
-	Branch      string `json:"branch"`
-	CommitSHA   string `json:"commit_sha"`
-	RepoURL     string `json:"repo_url"`
-	TriggeredBy string `json:"triggered_by"`
+	DeployID      string `json:"deploy_id"`
+	AppName       string `json:"app_name"`
+	Branch        string `json:"branch"`
+	CommitSHA     string `json:"commit_sha"`
+	RepoURL       string `json:"repo_url"`
+	TriggeredBy   string `json:"triggered_by"`
+	Domain        string `json:"domain"`
+	EnableSSL     bool   `json:"enable_ssl"`
+	ContainerPort int    `json:"container_port"`
 }
 
 func NewWebhookHandler(repo domain.DeployRepository, rdb *redis.Client) gin.HandlerFunc {
@@ -59,12 +63,23 @@ func NewWebhookHandler(repo domain.DeployRepository, rdb *redis.Client) gin.Hand
 
 		// 2. Publica no Redis para o agent processar
 		job := Job{
-			DeployID:    deploy.ID,
-			AppName:     deploy.AppName,
-			Branch:      deploy.Branch,
-			CommitSHA:   deploy.CommitSHA,
-			RepoURL:     payload.Repository.CloneURL,
-			TriggeredBy: deploy.TriggeredBy,
+			DeployID:      deploy.ID,
+			AppName:       deploy.AppName,
+			Branch:        deploy.Branch,
+			CommitSHA:     deploy.CommitSHA,
+			RepoURL:       payload.Repository.CloneURL,
+			TriggeredBy:   deploy.TriggeredBy,
+			Domain:        c.GetHeader("X-Deploy-Domain"),       // ex: app.exemplo.com
+			EnableSSL:     c.GetHeader("X-Deploy-SSL") == "true", // header opcional
+			ContainerPort: 8080,                                  // default, sobrescrito pelo header
+		}
+
+		// Sobrescreve porta via header se fornecido
+		if port := c.GetHeader("X-Deploy-Port"); port != "" {
+			var p int
+			if _, err := fmt.Sscanf(port, "%d", &p); err == nil && p > 0 {
+				job.ContainerPort = p
+			}
 		}
 		jobBytes, _ := json.Marshal(job)
 		if err := rdb.LPush(context.Background(), QueueName, jobBytes).Err(); err != nil {

@@ -1,5 +1,5 @@
 exodeploy/
-├── api/                    # API de Controle (FastAPI) 
+├── api/                    # API de Controle (GO) 
 │   ├── app/
 │   │   ├── core/           # Configurações globais, segurança e JWT 
 │   │   ├── models/         # Definição das tabelas (PostgreSQL) 
