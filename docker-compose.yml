@@ -1,26 +1,39 @@
 services:
+  # Banco de dados
   postgres:
-    image: postgres:16-alpine        # alpine, imagem menor
+    image: postgres:16-alpine
     container_name: exodeploy-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: exodeploy
-      POSTGRES_PASSWORD: ${DB_PASSWORD}  # vem do .env
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: exodeploy
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data  # persistencia
+      - postgres_data:/var/lib/postgresql/data
 
+  # Fila Redis
   redis:
-      image: redis:7-alpine
-      container_name: exodeploy-redis
-      restart: unless-stopped
-      command: redis-server --requirepass ${REDIS_PASSWORD}
-      ports:
-        - "6379:6379"
-      volumes:
-        - redis_data:/data
+    image: redis:7-alpine
+    container_name: exodeploy-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # Dashboard
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: exodeploy-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+
 volumes:
   postgres_data:
   redis_data:
