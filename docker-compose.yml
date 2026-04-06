@@ -31,6 +31,8 @@ services:
       dockerfile: Dockerfile
     container_name: exodeploy-dashboard
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3000:80"
 
