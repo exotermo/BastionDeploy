@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { API_BASE_URL } from '../config/api'
+import { API_BASE_URL, apiRequest } from '../config/api'
 
 export interface AppStatus {
   name: string
@@ -7,21 +7,23 @@ export interface AppStatus {
   uptime: string
 }
 
+const POLL_INTERVAL = 10000
+
 export function useAppsStatus() {
   const [apps, setApps] = useState<AppStatus[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/v1/apps/status`)
+    apiRequest(`${API_BASE_URL}/api/v1/apps/status`)
       .then(r => r.json())
       .then(data => { setApps(data.apps ?? []); setLoading(false) })
       .catch(() => setLoading(false))
 
     const interval = setInterval(() => {
-      fetch(`${API_BASE_URL}/api/v1/apps/status`)
+      apiRequest(`${API_BASE_URL}/api/v1/apps/status`)
         .then(r => r.json())
         .then(data => setApps(data.apps ?? []))
-    }, 10000)
+    }, POLL_INTERVAL)
 
     return () => clearInterval(interval)
   }, [])

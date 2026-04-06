@@ -77,7 +77,7 @@ func New(cfg *Config) (*Worker, error) {
 
 	// Setup Cloudflare Tunnel se habilitado
 	if cfg.UseTunnelMode {
-		cf := provisioner.NewCloudflareProvisioner(cfg.CloudflareTunnelToken)
+		cf := provisioner.NewCloudflareProvisioner(cfg.CloudflareTunnelToken, cfg.InstallDir)
 		if err := cf.SetupTunnel(); err != nil {
 			log.Printf("⚠️  Cloudflare tunnel falhou: %v (deploy continuará sem tunnel)", err)
 		}

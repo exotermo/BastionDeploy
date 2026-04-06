@@ -6,135 +6,210 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"text/template"
-)
-
-const (
-	cloudflaredService = "/etc/systemd/system/cloudflared.service"
-	cloudflaredEnvFile = "/etc/default/cloudflared"
 )
 
 // CloudflareProvisioner gerencia o cloudflared tunnel na VPS
 type CloudflareProvisioner struct {
 	token string
+	dir   string // dir de instalação do Agent (onde grava o script)
 }
 
-func NewCloudflareProvisioner(token string) *CloudflareProvisioner {
-	return &CloudflareProvisioner{token: token}
-}
-
-// EnsureCloudflared verifica se cloudflared está instalado, senão instala
-func (p *CloudflareProvisioner) EnsureCloudflared() error {
-	if _, err := exec.LookPath("cloudflared"); err == nil {
-		log.Println("☁️  cloudflared já está instalado")
-		return nil
+func NewCloudflareProvisioner(token, installDir string) *CloudflareProvisioner {
+	return &CloudflareProvisioner{
+		token: token,
+		dir:   installDir,
 	}
-
-	log.Println("📦 Instalando cloudflared...")
-	return p.installCloudflared()
 }
 
-// SetupTunnel configura e inicia o cloudflared tunnel com o token fornecido
+// SetupTunnel verifica se o tunnel está configurado e ativo.
+// Se não estiver, gera um script de setup e retorna instruções.
+// Isso permite que o Agent inicie sem precisar de sudo.
 func (p *CloudflareProvisioner) SetupTunnel() error {
-	if err := p.EnsureCloudflared(); err != nil {
-		return fmt.Errorf("erro ao instalar cloudflared: %w", err)
-	}
-
-	// Verifica se o túnel já está configurado
-	if _, err := os.Stat(cloudflaredEnvFile); err == nil {
-		content, _ := os.ReadFile(cloudflaredEnvFile)
-		if bytes.Contains(content, []byte("TUNNEL_TOKEN")) {
-			log.Println("☁️  Cloudflare tunnel já está configurado, pulando")
-			return nil
-		}
+	if _, err := exec.LookPath("cloudflared"); err != nil {
+		// Binário não instalado — instruções genéricas
+		log.Println("⚠️  cloudflared não está instalado")
+		p.printSetupInstructions()
+		return fmt.Errorf("cloudflared não encontrado no PATH")
 	}
 
 	if p.token == "" {
-		return fmt.Errorf("CLOUDFLARE_TUNNEL_TOKEN não definido — obrigatório para tunnel mode")
+		// Sem token — tunnel mode ativo sem setup
+		log.Println("☁️  Tunnel mode ativo, mas sem token — rode setup_tunnel.sh")
+		p.printSetupInstructions()
+		return nil
 	}
 
-	// Cria o systemd service para o tunnel
-	if err := p.writeSystemdService(); err != nil {
-		return fmt.Errorf("erro ao criar systemd service: %w", err)
+	// Verifica se o serviço já está rodando
+	if p.isTunnelActive() {
+		log.Println("☁️  Cloudflare tunnel está ativo")
+		return nil
 	}
 
-	// Grava o token de autenticação
-	if err := os.WriteFile(cloudflaredEnvFile,
-		[]byte(fmt.Sprintf("TUNNEL_TOKEN=%s\n", p.token)),
-		0600,
-	); err != nil {
-		return fmt.Errorf("erro ao gravar token: %w", err)
+	// Tunnel não ativo — gera script e instruções
+	log.Println("⚠️  Cloudflare tunnel não está ativo")
+	log.Println("   Gere e rode o script de setup:")
+	log.Printf("   %s/setup_tunnel.sh\n", p.dir)
+
+	if err := p.generateSetupScript(); err != nil {
+		return fmt.Errorf("erro ao gerar script: %w", err)
 	}
 
-	// Reload + enable + start
-	if err := p.runServiceCommands("daemon-reload", "enable", "start"); err != nil {
-		return fmt.Errorf("erro ao iniciar tunnel: %w", err)
-	}
-
-	log.Println("✅ Cloudflare tunnel ativo")
+	log.Println("   Execute: sudo bash", filepath.Join(p.dir, "setup_tunnel.sh"))
 	return nil
 }
 
-// IsTunnelActive verifica se o serviço cloudflared está rodando
-func (p *CloudflareProvisioner) IsTunnelActive() bool {
+func (p *CloudflareProvisioner) isTunnelActive() bool {
 	cmd := exec.Command("systemctl", "is-active", "--quiet", "cloudflared")
-	return cmd.Run() == nil
+	if cmd.Run() != nil {
+		return false
+	}
+
+	// Verifica se o token no arquivo de configuração bate
+	envFile := "/etc/default/cloudflared"
+	content, err := os.ReadFile(envFile)
+	if err != nil {
+		return false
+	}
+	if !bytes.Contains(content, []byte("TUNNEL_TOKEN")) {
+		return false
+	}
+	// Token presente no systemd service?
+	serviceFile := "/etc/systemd/system/cloudflared.service"
+	svcContent, err := os.ReadFile(serviceFile)
+	if err != nil {
+		return false
+	}
+	if !bytes.Contains(svcContent, []byte("ExecStart")) {
+		return false
+	}
+	return true
 }
 
-// --- internals ---
+func (p *CloudflareProvisioner) generateSetupScript() error {
+	setupPath := filepath.Join(p.dir, "setup_tunnel.sh")
 
-func (p *CloudflareProvisioner) installCloudflared() error {
-	// Detecta o gerenciador de pacotes e instala
-	if _, err := exec.LookPath("dnf"); err == nil {
-		return p.runInstall("dnf", "install", "-y", "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-x86_64.rpm")
-	}
-	if _, err := exec.LookPath("apt"); err == nil {
-		// curl + dpkg para .deb
-		if err := p.run("curl", "-fSL", "-o", "/tmp/cloudflared.deb",
-			"https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb"); err != nil {
-			return err
+	// Já existe e tem token? — não sobrescreve
+	if content, err := os.ReadFile(setupPath); err == nil {
+		if bytes.Contains(content, []byte(p.token[:8])) {
+			return nil // script válido já existe
 		}
-		defer os.Remove("/tmp/cloudflared.deb")
-		return p.run("dpkg", "-i", "/tmp/cloudflared.deb")
 	}
 
-	return fmt.Errorf("gerenciador de pacotes não suportado — instale cloudflared manualmente")
-}
+	scriptTemplate := template.Must(template.New("setup").Parse(`#!/bin/bash
+# BastionDeploy — Cloudflare Tunnel Setup Script
+# Gerado automaticamente pelo Agent
+# Execute com: sudo bash setup_tunnel.sh
 
-func (p *CloudflareProvisioner) runInstall(name string, args ...string) error {
-	return p.run(name, args...)
-}
+set -e
 
-var cloudflaredServiceTemplate = template.Must(template.New("cloudflared").Parse(`[Unit]
+CLOUDFLARE_BIN=$(command -v cloudflared)
+if [ -z "$CLOUDFLARE_BIN" ]; then
+  echo "❌ cloudflared não instalado. Instale antes."
+  echo "   Ubuntu: sudo apt-get install cloudflared"
+  echo "   Fedora: sudo dnf install cloudflared"
+  exit 1
+fi
+
+echo "☁️  Configurando Cloudflare Tunnel..."
+
+# Garante diretório
+mkdir -p /etc/default
+
+# Token
+echo 'TUNNEL_TOKEN={{.Token}}' > /etc/default/cloudflared
+chmod 600 /etc/default/cloudflared
+echo "✅ Token configurado"
+
+# Systemd service
+cat > /etc/systemd/system/cloudflared.service << 'SVCEOF'
+[Unit]
 Description=Cloudflare Tunnel
 After=network-online.target
 
 [Service]
 Type=simple
 EnvironmentFile=/etc/default/cloudflared
-ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate run
+ExecStart=/usr/bin/cloudflared tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
 Restart=always
 RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
+SVCEOF
+
+echo "✅ Serviço systemd criado"
+
+# Detecta se está em Fedora ou Ubuntu/RHEL
+if command -v systemctl &> /dev/null; then
+  systemctl daemon-reload
+  systemctl enable cloudflared
+  systemctl restart cloudflared
+  echo "✅ Tunnel iniciado"
+
+  sleep 2
+  if systemctl is-active --quiet cloudflared; then
+    echo "✅ Cloudflare tunnel ativo e funcionando"
+  else
+    echo "⚠️  Tunnel não parece ativo. Verifique:"
+    echo "   sudo journalctl -u cloudflared -n 50"
+  fi
+else
+  echo "⚠️  systemd não encontrado. Configure manualmente."
+  echo "   Comando: sudo $CLOUDFLARE_BIN tunnel --no-autoupdate run --token '{{.Token}}'"
+fi
 `))
 
-func (p *CloudflareProvisioner) writeSystemdService() error {
 	var buf bytes.Buffer
-	if err := cloudflaredServiceTemplate.Execute(&buf, nil); err != nil {
+	if err := scriptTemplate.Execute(&buf, map[string]string{"Token": p.token}); err != nil {
 		return err
 	}
-	return os.WriteFile(cloudflaredService, buf.Bytes(), 0644)
+
+	return os.WriteFile(setupPath, buf.Bytes(), 0755)
 }
 
-func (p *CloudflareProvisioner) runServiceCommands(subcommands ...string) error {
-	for _, sub := range subcommands {
-		if err := p.run("systemctl", sub, "cloudflared"); err != nil {
-			return fmt.Errorf("systemctl %s falhou: %w", sub, err)
+func (p *CloudflareProvisioner) printSetupInstructions() {
+	log.Println("   Para configurar manualmente:")
+	log.Println("   sudo /usr/bin/cloudflared tunnel --no-autoupdate run --token <SEU_TOKEN>")
+}
+
+// IsTunnelActive é público para o Agent usar no health check
+func (p *CloudflareProvisioner) IsTunnelActive() bool {
+	cmd := exec.Command("systemctl", "is-active", "--quiet", "cloudflared")
+	return cmd.Run() == nil
+}
+
+func (p *CloudflareProvisioner) DetectPackageManager() string {
+	for _, pm := range []string{"dnf", "apt", "yum", "apk"} {
+		if _, err := exec.LookPath(pm); err == nil {
+			return pm
 		}
 	}
-	return nil
+	return ""
+}
+
+func (p *CloudflareProvisioner) InstallCloudflared(pm string) error {
+	log.Printf("📦 Instalando cloudflared via %s...", pm)
+	switch pm {
+	case "apt":
+		if err := p.run("sudo", "mkdir", "-p", "--mode=0755", "/usr/share/keyrings"); err != nil {
+			return err
+		}
+		if err := p.run("bash", "-c",
+			"curl -fsSL https://pkg.cloudflare.com/cloudflare-public-v2.gpg | sudo tee /usr/share/keyrings/cloudflare-public-v2.gpg >/dev/null"); err != nil {
+			return err
+		}
+		if err := p.run("bash", "-c",
+			"echo 'deb [signed-by=/usr/share/keyrings/cloudflare-public-v2.gpg] https://pkg.cloudflare.com/cloudflared any main' | sudo tee /etc/apt/sources.list.d/cloudflared.list"); err != nil {
+			return err
+		}
+		return p.run("sudo", "apt-get", "update", "-qq", "&&", "sudo", "apt-get", "install", "-y", "cloudflared")
+	case "dnf":
+		return p.run("sudo", "rpm", "-i", "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-x86_64.rpm")
+	}
+	return fmt.Errorf("package manager não suportado: %s", pm)
 }
 
 func (p *CloudflareProvisioner) run(name string, args ...string) error {
@@ -142,4 +217,36 @@ func (p *CloudflareProvisioner) run(name string, args ...string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func (p *CloudflareProvisioner) RunStatus() string {
+	if _, err := exec.LookPath("cloudflared"); err != nil {
+		return "not_installed"
+	}
+	if p.isTunnelActive() {
+		return "active"
+	}
+	if p.token != "" {
+		return "configured_but_inactive"
+	}
+	return "not_configured"
+}
+
+func (p *CloudflareProvisioner) GetTunnelID() string {
+	if p.token == "" {
+		return ""
+	}
+	// Token JWT: eyJhIjoixx...eyJ0Ijoy... — pega o "t" claim do payload
+	parts := strings.Split(p.token, ".")
+	if len(parts) < 2 {
+		return p.token[:16] + "..."
+	}
+	return p.token[len(parts[0])+1 : min(len(parts[0])+17, len(p.token))]
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

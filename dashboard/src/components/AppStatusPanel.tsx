@@ -1,33 +1,46 @@
-import { Circle } from 'lucide-react'
+import { Server, ExternalLink } from 'lucide-react'
 import { useAppsStatus } from '../hooks/useAppsStatus'
 
 export function AppStatusPanel() {
   const { apps, loading } = useAppsStatus()
 
   return (
-    <div className="bg-[#0a0c10] border border-[#ffffff10] rounded-xl p-6"
-         style={{ boxShadow: '0 4px 24px rgba(0,0,0,0.4)' }}>
-      <h3 className="text-lg font-semibold text-white mb-6">App Status</h3>
+    <div className="bg-[#161922] border border-[#1e2130] rounded-xl p-5">
+      <h3 className="text-sm font-semibold text-white mb-1">Apps</h3>
+      <p className="text-[11px] text-gray-600 mb-4">Status dos aplicativos</p>
       {loading ? (
-        <p className="text-gray-500 text-sm">Carregando...</p>
+        <p className="text-gray-700 text-sm">Carregando...</p>
       ) : apps.length === 0 ? (
-        <p className="text-gray-500 text-sm">Nenhuma app encontrada.</p>
+        <p className="text-gray-700 text-sm">Nenhuma app registrada.</p>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-2">
           {apps.map((app) => (
-            <div key={app.name}
-                 className="flex items-center justify-between p-3 rounded-lg bg-[#ffffff05] border border-[#ffffff08] hover:border-[#ffffff15] transition-all">
+            <div
+              key={app.name}
+              className="flex items-center justify-between px-4 py-3 rounded-lg bg-[#111319] border border-[#1e2130] hover:border-[#2a2d42] transition-all"
+            >
               <div className="flex items-center gap-3">
-                <Circle className={`w-3 h-3 ${app.status === 'UP' ? 'fill-[#00ff88] text-[#00ff88]' : 'fill-[#ff4444] text-[#ff4444]'}`} />
-                <span className="text-white font-medium" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
-                  {app.name}
-                </span>
+                <div
+                  className={`w-2 h-2 rounded-full mt-0.5 ${
+                    app.status === 'UP' ? 'bg-emerald-500' : 'bg-red-500'
+                  }`}
+                />
+                <div>
+                  <span className="text-sm text-gray-200 font-mono font-medium">
+                    {app.name}
+                  </span>
+                  <p className="text-[10px] text-gray-600">{app.uptime}</p>
+                </div>
               </div>
-              <span className={`px-2 py-1 rounded text-xs font-medium ${
-                app.status === 'UP'
-                  ? 'bg-[#00ff8815] text-[#00ff88] border border-[#00ff8830]'
-                  : 'bg-[#ff444415] text-[#ff4444] border border-[#ff444430]'
-              }`}>{app.status}</span>
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                  app.status === 'UP'
+                    ? 'bg-emerald-500/10 text-emerald-500'
+                    : 'bg-red-500/10 text-red-500'
+                }`}
+              >
+                {app.status}
+              </span>
             </div>
           ))}
         </div>

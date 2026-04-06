@@ -12,11 +12,12 @@ import (
 // Config é a struct que representa TODAS as configurações da aplicação.
 // Em POO seria uma classe com atributos privados e getters.
 type Config struct {
-	Port        string
-	GinMode     string
-	AllowedOrigins []string // quais domínios podem chamar a API
-	TrustedProxies []string // whitelist Cloudflare
+	Port                string
+	GinMode             string
+	AllowedOrigins      []string // quais domínios podem chamar a API
+	TrustedProxies      []string // whitelist Cloudflare
 	GitHubWebhookSecret string
+	APIKey              string // X-API-Key — protege os endpoints da API
 	// Banco de dados
 	DBHost     string
 	DBPort     string
@@ -44,15 +45,15 @@ func Load() *Config {
 
 	secret = strings.TrimSpace(secret)
 
-
-	return &Config{
+	cfg := &Config{
 		Port:    getEnvOrDefault("PORT", "8080"),
 		GinMode: getEnvOrDefault("GIN_MODE", "release"),
 
 		// Divide "https://app.com,https://dash.com" em uma lista
 		AllowedOrigins: trimOrigins(strings.Split(origins, ",")),
 
-		GitHubWebhookSecret: secret, 
+		GitHubWebhookSecret: secret,
+		APIKey:              strings.TrimSpace(os.Getenv("API_KEY")),
 
 		// Banco de dados -> postgres 15
 		DBHost:     getEnvOrDefault("DB_HOST", "localhost"),
@@ -84,6 +85,16 @@ func Load() *Config {
 		RedisAddr:     getEnvOrDefault("REDIS_ADDR", "localhost:6379"),
 		RedisPassword: strings.TrimSpace(os.Getenv("REDIS_PASSWORD")),
 	}
+
+	cfg.Validate()
+	return cfg
+}
+
+// Validate checa configurações críticas e loga avisos.
+func (c *Config) Validate() {
+	if c.APIKey == "" {
+		log.Println("⚠️  API_KEY não definida — endpoints ficam sem autenticação (inseguro para produção)")
+	}
 }
 
 // getEnvOrDefault é um helper privado (letra minúscula = privado em Go,
@@ -95,20 +106,17 @@ func getEnvOrDefault(key, fallback string) string {
 	return fallback
 }
 
-
-
 // trimOrigins remove espaços em branco de cada origem
 // evita erro se o .env tiver "http://localhost:3000, https://exotermo.dev" (com espaço)
 func trimOrigins(origins []string) []string {
-    result := make([]string, len(origins))
-    for i, o := range origins {
-        result[i] = strings.TrimSpace(o)
-    }
-    return result
+	result := make([]string, len(origins))
+	for i, o := range origins {
+		result[i] = strings.TrimSpace(o)
+	}
+	return result
 }
 
-
-// Adiciona esse método na struct Config
+// DatabaseURL retorna a connection string pro PostgreSQL
 func (c *Config) DatabaseURL() string {
 	return fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",

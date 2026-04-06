@@ -8,15 +8,26 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 type DockerRunner struct{}
 
+func NewDockerRunner() *DockerRunner {
+	return &DockerRunner{}
+}
+
 // validAppName garante que o nome só contém chars seguras (previne path traversal)
 var validAppName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]+$`)
 
-func NewDockerRunner() *DockerRunner {
-	return &DockerRunner{}
+// blockedNames são nomes que nunca podem ser usados, mesmo que passem na regex.
+// Previne colisão com paths/arquivos críticos do SO.
+var blockedNames = map[string]bool{
+	"": true, ".": true, "..": true,
+	"root": true, "etc": true, "bin": true, "sbin": true, "usr": true,
+	"var": true, "tmp": true, "dev": true, "proc": true, "sys": true,
+	"boot": true, "lib": true, "lib64": true, "opt": true, "srv": true,
+	"run": true, "home": true, "docker": true, "init": true,
 }
 
 // DeployOptions agrupa os parâmetros opcionais de deploy
@@ -28,9 +39,12 @@ type DeployOptions struct {
 
 // Deploy clona o repo, builda, sobe o container e (opcionalmente) configura Nginx+SSL
 func (r *DockerRunner) Deploy(ctx context.Context, appName, repoURL, branch string, opts *DeployOptions) error {
-	// 0. Sanitize app name (previne path traversal)
+	// 0. Sanitize app name (previne path traversal + nomes reservados)
 	if !validAppName.MatchString(appName) {
 		return fmt.Errorf("nome do app inválido: %s (apenas alfanumérico, ponto, hífen, underscore)", appName)
+	}
+	if blockedNames[strings.ToLower(appName)] {
+		return fmt.Errorf("nome do app bloqueado: %s (nome reservado do sistema)", appName)
 	}
 
 	if opts == nil {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { API_BASE_URL } from '../config/api'
+import { API_BASE_URL, apiRequest } from '../config/api'
 
 export interface Deploy {
   id: string
@@ -12,22 +12,21 @@ export interface Deploy {
   updated_at: string
 }
 
+const POLL_INTERVAL = 5000
+
 export function useDeploys() {
   const [deploys, setDeploys] = useState<Deploy[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetch(`${API_BASE_URL}/api/v1/deploys`)
+  const fetchDeploys = () =>
+    apiRequest(`${API_BASE_URL}/api/v1/deploys`)
       .then(r => r.json())
-      .then(data => { setDeploys(data.deploys ?? []); setLoading(false) })
-      .catch(() => setLoading(false))
+      .then(data => setDeploys(data.deploys ?? []))
+      .catch(() => {/* ignora erros silenciosamente em polling */})
 
-    const interval = setInterval(() => {
-      fetch(`${API_BASE_URL}/api/v1/deploys`)
-        .then(r => r.json())
-        .then(data => setDeploys(data.deploys ?? []))
-    }, 10000)
-
+  useEffect(() => {
+    fetchDeploys().then(() => setLoading(false))
+    const interval = setInterval(fetchDeploys, POLL_INTERVAL)
     return () => clearInterval(interval)
   }, [])
 

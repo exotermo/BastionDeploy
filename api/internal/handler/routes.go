@@ -15,18 +15,26 @@ func RegisterRoutes(r *gin.Engine, webhookSecret string, deployRepo domain.Deplo
 
 	v1 := r.Group("/api/v1")
 	{
+		// Público: load balancers e health checks
 		v1.GET("/health", HealthCheck)
-		v1.GET("/stats", NewStatsHandler(deployRepo))
-		v1.GET("/apps/status", NewAppsStatusHandler(deployRepo))
-		v1.GET("/deploys", NewDeploysHandler(deployRepo))
 
-		deploy := v1.Group("/deploy")
+		// Protegidos por API Key
+		authed := v1.Group("", middleware.RequireAPIKey())
 		{
-			deploy.POST("/webhook",
+			authed.GET("/stats", NewStatsHandler(deployRepo))
+			authed.GET("/apps/status", NewAppsStatusHandler(deployRepo))
+			authed.GET("/deploys", NewDeploysHandler(deployRepo))
+
+			deploy := authed.Group("/deploy")
+			{
+				deploy.GET("/status/:app", NewStatusHandler(deployRepo))
+			}
+
+			// Webhook: protegido por HMAC (checagem GitHub), não por API Key
+			v1.POST("/deploy/webhook",
 				middleware.ValidateGitHubWebhook(webhookSecret),
 				NewWebhookHandler(deployRepo, rdb),
 			)
-			deploy.GET("/status/:app", NewStatusHandler(deployRepo))
 		}
 	}
 }
